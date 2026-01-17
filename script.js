@@ -50,8 +50,7 @@ function init() {
 
     // 1. Scene Setup
     scene = new THREE.Scene();
-    // Für AR lassen wir den Hintergrund leer (Transparent)
-    scene.background = new THREE.Color(0x0a0a0a); 
+    //scene.background = new THREE.Color(0x0a0a0a); 
 
     // 2. Camera
     camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
