@@ -75,7 +75,7 @@ function init() {
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
 
-    // 6. Controls (Funktionieren im Browser, werden in AR von der Brille übernommen)
+    // 6. Controls 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
@@ -225,7 +225,7 @@ function setupLights() {
     const mainLight = new THREE.DirectionalLight(0xffffff, 1.0);
     mainLight.position.set(10, 20, 10);
     scene.add(mainLight);
-    scene.add(new THREE.AmbientLight(0x404040, 1)); // Grundhelligkeit
+    scene.add(new THREE.AmbientLight(0x404040, 1)); 
 }
 
 // ========================================
@@ -251,8 +251,6 @@ function onMouseMove(event) {
 }
 
 function checkHover() {
-    // Falls wir im AR-Modus sind und keine Maus haben, 
-    // setzen wir den Raycaster auf die Mitte des Bildschirms (Blickrichtung)
     if (renderer.xr.isPresenting) {
         raycaster.setFromCamera({ x: 0, y: 0 }, camera);
     } else {
