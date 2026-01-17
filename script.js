@@ -3,7 +3,7 @@ import { OrbitControls } from "https://esm.sh/three@0.164.0/examples/jsm/control
 import { RoundedBoxGeometry } from "https://esm.sh/three@0.164.0/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "https://esm.sh/three@0.164.0/examples/jsm/environments/RoomEnvironment.js";
 // WEBXR IMPORT
-import { ARButton } from "https://esm.sh/three@0.164.0/examples/jsm/webxr/ARButton.js";
+import { VRButton } from "https://esm.sh/three@0.164.0/examples/jsm/webxr/VRButton.js";
 
 // ========================================
 // PRODUKTDATEN
@@ -69,7 +69,7 @@ function init() {
     container.appendChild(renderer.domElement);
 
     // 4. AR Button hinzufügen
-    document.body.appendChild(ARButton.createButton(renderer));
+    document.body.appendChild(VRButton.createButton(renderer));
 
     // 5. Environment
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
