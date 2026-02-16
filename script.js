@@ -6,29 +6,42 @@ import { OrbitControls } from "https://esm.sh/three@0.164.0/examples/jsm/control
 // ========================================
 const categories = {
     'Mac': {
-        newest: 'MacBook Pro',
-        products: ['MacBook Pro', 'MacBook Air', 'iMac', 'Mac Studio', 'Mac Pro'],
-        color: 0xA2AAAD,
-        heroImage: './assets/mac_hero.jpg',
+        color: 0x2e67f2,
+        products: [
+            { name: 'MacBook Pro', img: './assets/macbookPro.png', importance: 1.0 }, // Flaggschiff
+            { name: 'MacBook Air', img: './assets/macbookAir.png', importance: 0.8 },
+            { name: 'iMac', img: './assets/iMac.png', importance: 0.6 },
+            { name: 'MacMini', img: './assets/macMini.png', importance: 0.4 }
+        ]
     },
     'iPhone': {
-        newest: 'iPhone 17 Pro',
-        products: ['iPhone 17', 'iPhone 16', 'iPhone SE', 'Zubehör'],
-        color: 0x4A90E2,
-        heroImage: './assets/iphone_hero.jpg',
+        color: 0x2e67f2,
+        products: [
+            { name: 'iPhone 17 Pro', img: './assets/iphone17pro.png', importance: 1.0 }, // Flaggschiff
+            { name: 'iPhone 17', img: './assets/iphone17.png', importance: 0.8 },
+            { name: 'iPhone 16', img: './assets/iphone16.png', importance: 0.6 },
+            { name: 'iPhone Air', img: './assets/iphoneAir.png', importance: 0.4 }
+        ]
     },
+
     'iPad': {
-        newest: 'iPad Pro',
-        products: ['iPad Air', 'iPad', 'iPad mini', 'Pencil'],
-        color: 0x6E6E73,
-        heroImage: './assets/ipad_hero.jpg',
+        color: 0x2e67f2,
+        products: [
+            { name: 'iPad Pro', img: './assets/ipadPro.jpg', importance: 1.0 },
+            { name: 'iPad Air', img: './assets/ipadAir.jpg', importance: 0.8 }, // Flaggschiff
+            { name: 'iPad', img: './assets/iPad.png', importance: 0.6 },
+            { name: 'iPad Mini', img: './assets/ipadMini.jpg', importance: 0.4 }
+        ]
     },
+
     'AirPods': {
-        newest: 'AirPods Max',
-        products: ['AirPods Pro', 'AirPods 3', 'AirPods 2'],
-        color: 0xE8E8E8,
-        heroImage: './assets/airpods_hero.jpg',
-    }
+        color: 0x2e67f2,
+        products: [
+            { name: 'AirPods Pro', img: './assets/airpodsPro.png', importance: 1.0 }, // Flaggschiff
+            { name: 'AirPods Max', img: './assets/airpodsMax.png', importance: 0.8 },
+            { name: 'AirPods 4', img: './assets/airpods4.png', importance: 0.6 },
+        ]
+    },
 };
 
 // ========================================
@@ -87,10 +100,11 @@ function createRoundedBox(width, height, depth, radius) {
 }
 
 
+
 // ========================================
 // PRODUCT CARD ERSTELLEN
 // ========================================
-function createProductCard(text, position, isNewest = false, categoryColor = 0xffffff) {
+/*function createProductCard(text, position, isNewest = false, categoryColor = 0xffffff) {
     const group = new THREE.Group();
     
     const width = isNewest ? 4.5 : 3.2;
@@ -162,6 +176,49 @@ function createProductCard(text, position, isNewest = false, categoryColor = 0xf
     };
 
     return group;
+}*/
+
+function createProductCard(imageUrl, scaleFactor = 1) {
+    const group = new THREE.Group();
+
+    // Die Glas-Karte
+    const geometry = new THREE.PlaneGeometry(3, 4); // Hochformat für Handys
+    const material = new THREE.MeshStandardMaterial({
+        map: new THREE.TextureLoader().load(imageUrl),
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+        roughness: 0.1,
+        metalness: 0.5
+    });
+
+    const card = new THREE.Mesh(geometry, material);
+    card.scale.set(scaleFactor, scaleFactor, scaleFactor);
+    
+    group.add(card);
+    return group;
+}
+
+function populateBubble(bubbleGroup, categoryName) {
+    const products = categories[categoryName].products; // Angenommen, dein Array ist sortiert (Neu -> Alt)
+    
+    products.forEach((product, index) => {
+        // Hierarchie-Logik:
+        // Index 0 ist das neueste (z.B. iPhone 17 Pro)
+        const isLead = (index === 0);
+        const scale = isLead ? 1.2 : 0.7 - (index * 0.1); 
+        const zPos = isLead ? 1.5 : -1.0 - (index * 1.5); // Lead ist ganz vorne (z > 0)
+        const xPos = isLead ? 0 : (index % 2 === 0 ? 2 : -2);
+        const yPos = isLead ? 0 : (index * -0.5);
+
+        const card = createProductCard(product.image, scale);
+        card.position.set(xPos, yPos, zPos);
+        
+        // Speichere die Startposition für die Animation
+        card.userData.floatOffset = Math.random() * Math.PI * 2;
+        
+        bubbleGroup.add(card);
+    });
 }
 
 // ========================================
@@ -183,7 +240,9 @@ function createDynamicSoapBubble(categoryColor, category) {
         ior: 1.45,
         transparent: true,
         opacity: 0.2,
-        side: THREE.DoubleSide
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        alphaTest: 0.05
     });
     
     const bubble = new THREE.Mesh(geometry, material);
@@ -287,78 +346,82 @@ function createCategoryColumn(categoryName, xPosition, categoryColor) {
 
     scene.add(columnGroup);
 
-
-    interactableObjects.push(heroShot);
-    columnGroup.userData.heroShot = heroShot;
-
-    
-    // 2. PRODUCT ICONS (in der Bubble verteilt) - ERST ERSTELLEN
+    // 2. PRODUCT CARDS (Floating in der Bubble mit Hierarchie)
     const productCards = [];
-    data.products.forEach((prodName, i) => {
+    
+    // Wir nutzen jetzt das neue Array von Objekten aus deiner Datenstruktur
+    data.products.forEach((productObj, i) => {
+        const isLead = (i === 0); // Das erste Produkt im Array ist unser Flaggschiff
+        
+        // Winkel für die Verteilung der anderen Produkte
         const angle = (i / data.products.length) * Math.PI * 2;
         const radiusX = 2.0;
         const radiusY = 2.3;
         
-        const x = Math.cos(angle) * radiusX;
-        const y = Math.sin(angle) * radiusY - 0.5;
-        const z = Math.sin(angle * 2) * 0.6;
+        // POSITIONS-LOGIK:
+        let x, y, z;
+        if (isLead) {
+            // Flaggschiff: Zentral und weiter vorne
+            x = 0;
+            y = 0;
+            z = 1.2; 
+        } else {
+            // Andere Produkte: Verteilt im Hintergrund
+            x = Math.cos(angle) * radiusX;
+            y = Math.sin(angle) * radiusY - 0.5;
+            z = -1.0 - (i * 0.4); // Tiefenstaffelung nach hinten
+        }
 
-        const miniCard = createProductCard(prodName, new THREE.Vector3(x, y, z), false, categoryColor);
+        // Erstelle die Karte (isLead bekommt größeren Scale-Faktor)
+        const scale = isLead ? 1.2 : 0.75;
+        // Wir übergeben jetzt productObj.img statt nur dem Namen
+        const miniCard = createProductCard(productObj.img, scale);
+        
         miniCard.userData.type = 'productIcon';
         miniCard.userData.targetPos = new THREE.Vector3(x, y, z);
         miniCard.userData.category = categoryName;
         miniCard.userData.index = i;
         miniCard.userData.bubbleAngle = angle;
+        // Für das Schweben in der animate-Schleife
+        miniCard.userData.floatOffset = Math.random() * Math.PI * 2; 
 
         columnGroup.add(miniCard);
         interactableObjects.push(miniCard);
         productCards.push(miniCard);
     });
 
-    // 3. SOAP BUBBLE - DYNAMISCH UM PRODUCT ICONS
+    // 3. SOAP BUBBLE - DYNAMISCH UM PRODUCT ICONS (Bleibt wie bei dir)
     const bubble = createDynamicSoapBubble(categoryColor, categoryName);
     columnGroup.add(bubble);
     columnGroup.userData.bubble = bubble;
     
-    // Update Bubble um die Product Cards zu umschließen
     updateBubbleToFitContent(bubble, productCards, 1.2);
 
-    // 4. HALO
+    // 4. HALO (Bleibt wie bei dir)
     const halo = createHalo(3.5, categoryColor);
     halo.position.set(0, -8.5, 0);
     columnGroup.add(halo);
     columnGroup.userData.halo = halo;
 
-    // 5. CATEGORY LABEL
+    // 5. CATEGORY LABEL (Bleibt wie bei dir)
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     canvas.width = 1024;
     canvas.height = 256;
-
     ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
     ctx.font = '600 80px -apple-system';
     ctx.textAlign = 'center';
     ctx.fillText(categoryName.toUpperCase(), 512, 140);
 
     const labelTex = new THREE.CanvasTexture(canvas);
-    const labelMat = new THREE.MeshBasicMaterial({ 
-        map: labelTex, 
-        transparent: true 
-    });
-    const labelMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(6, 1.5), 
-        labelMat
-    );
+    const labelMat = new THREE.MeshBasicMaterial({ map: labelTex, transparent: true });
+    const labelMesh = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5), labelMat);
     labelMesh.position.set(0, -8.5, 0);
     columnGroup.add(labelMesh);
 
-    // 6. DROP SHADOW
+    // 6. DROP SHADOW (Bleibt wie bei dir)
     const shadowGeo = new THREE.CircleGeometry(3.5, 32);
-    const shadowMat = new THREE.MeshBasicMaterial({
-        color: 0x000000,
-        transparent: true,
-        opacity: 0.1
-    });
+    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.1 });
     const shadow = new THREE.Mesh(shadowGeo, shadowMat);
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.set(0, -10, 0);
@@ -957,6 +1020,7 @@ function animate() {
     updateHeroParallax();
     controls.update();
     renderer.render(scene, camera);
+        
 }
 // Start
 init();
