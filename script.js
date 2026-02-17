@@ -58,7 +58,87 @@ let showGrid = true;
 let hoveredCard = null;
 let gridHelper;
 let globalHero;
+let stackState = 'bubble';
 
+function selectCategory(categoryName) {
+    activeCategory = categoryName;
+    const categoryKeys = Object.keys(categories);
+    const inactiveBubbles = categoryKeys.filter(key => key !== categoryName);
+
+    Object.keys(categories).forEach((key) => {
+        const group = scene.getObjectByName(key);
+        if (!group) return;
+
+        const isSelected = key === categoryName;
+        const bubble = group.userData.bubble;
+
+        if (isSelected) {
+            // --- AKTIVE KATEGORIE ---
+            group.userData.targetPos.set(0, -2, 2); // Zentraler Fokus
+            group.userData.targetScale = 1.0;
+            
+            // Die Bubble "auflösen": Wir setzen die Target-Opacity auf 0
+            if (bubble) {
+                bubble.userData.targetOpacity = 0;
+                // Optional: Ein kurzer Scale-Up Effekt beim "Platzen"
+                bubble.userData.targetScale = 1.5; 
+            }
+
+            // --- STAPEL-LOGIK (Tidy Pile) ---
+            /*const cards = group.children.filter(c => c.userData.type === 'productIcon');
+            cards.forEach((card, index) => {
+                // Stapel-Anordnung ohne Bubble-Zwang
+                card.userData.targetPos.set(0, index * -0.1, index * -0.2); // Leichte Tiefenstaffelung
+                card.userData.targetScale = 1.4; // Karten werden im Fokus groß
+                
+                // Rotation für den "Tidy Pile" Look aus deiner Skizze
+                // Nur die hinteren Karten sind leicht gedreht
+                card.userData.targetRotation = index === 0 ? 0 : (Math.random() - 0.5) * 0.15;
+                
+                // Transparenz-Effekt aus der Skizze (oberstes Produkt voll, Rest leicht transparent)
+                card.userData.targetOpacity = index === 0 ? 1.0 : 0.4;
+            });*/
+            expandToCardGrid(group);
+
+        } else {
+            const index = inactiveBubbles.indexOf(key);
+                const totalInactive = inactiveBubbles.length;
+                
+                // Positionierung oben in einer Reihe
+                const xPos = (index - (totalInactive - 1) / 2) * 4.5; 
+                group.userData.targetPos.set(xPos, 4, -4); 
+                group.userData.targetScale = 0.35; // Schön klein als Icon
+                group.userData.targetOpacity = 0.5; // Leicht transparent
+
+                // Landmark-Logik: Nur das erste Produkt bleibt sichtbar
+                const cards = group.children.filter(c => c.userData.type === 'productIcon');
+                cards.forEach((card, cardIndex) => {
+                    if (cardIndex === 0) {
+                        // Das Landmark-Produkt (z.B. iPhone 17 Pro)
+                        card.userData.targetPos.set(0, 0, 0); // Mittig in der kleinen Bubble
+                        card.userData.targetScale = 1.0;     // Relativ zur kleinen Bubble normal groß
+                        card.userData.targetOpacity = 1.0;   // Voll sichtbar
+                        card.userData.targetRotation = 0;    // Keine Drehung
+                    } else {
+                        // Alle anderen Produkte in dieser Bubble werden unsichtbar
+                        card.userData.targetPos.set(0, 0, -2); // Nach hinten schieben
+                        card.userData.targetScale = 0.1;      // Ganz klein machen
+                        card.userData.targetOpacity = 0.0;    // Komplett ausfaden
+                    }
+                });
+
+                // Label unter der kleinen Bubble evtl. auch kleiner machen
+                if (group.userData.labelMesh) {
+                    group.userData.labelMesh.scale.set(0.5, 0.5, 0.5);
+                }
+
+                if (bubble) {
+                bubble.userData.targetOpacity = 0.3; // Inaktive Bubbles bleiben sichtbar
+                bubble.userData.targetScale = 0.4;
+            }
+            }
+    });
+}
 // ========================================
 // EASING & HELPER FUNCTIONS
 // ========================================
@@ -100,126 +180,135 @@ function createRoundedBox(width, height, depth, radius) {
 }
 
 
-
 // ========================================
 // PRODUCT CARD ERSTELLEN
 // ========================================
-/*function createProductCard(text, position, isNewest = false, categoryColor = 0xffffff) {
+function createProductCard(imageUrl, scaleFactor = 1, category = '', productName = '') {
     const group = new THREE.Group();
-    
-    const width = isNewest ? 4.5 : 3.2;
-    const height = isNewest ? 2.8 : 1.4;
-    const depth = 0.15;
+    const isLandscape = (category === 'Mac');
+    const cardW = isLandscape ? 4.4 : 3.4;
+    const cardH = isLandscape ? 3.4 : 5.2;
 
-    // Card Background
-    const cardGeo = createRoundedBox(width, height, depth, 0.2);
+    // --- CARD HINTERGRUND (startet unsichtbar!) ---
+    const cardGeo = new THREE.BoxGeometry(cardW, cardH, 0.08);
     const cardMat = new THREE.MeshStandardMaterial({
-        //color: 0x1a1a1a,
-        metalness: 0.3,
-        roughness: 0.4,
-        emissive: categoryColor,
-        emissiveIntensity: isNewest ? 0.2 : 0.1,
+        color: 0x1c1c1e,
+        roughness: 0.3,
+        metalness: 0.4,
+        transparent: true,
+        opacity: 0  // Startet komplett unsichtbar
     });
+    const cardBack = new THREE.Mesh(cardGeo, cardMat);
+    cardBack.position.z = -0.05;
+    cardBack.userData.isCardBackground = true; // Marker zum Finden
+    group.add(cardBack);
+
+    // --- BORDER CANVAS ---
+    const borderGeo = new THREE.PlaneGeometry(cardW, cardH);
+    const borderCanvas = document.createElement('canvas');
+    borderCanvas.width = 512;
+    borderCanvas.height = isLandscape ? 394 : 645;
+    const bCtx = borderCanvas.getContext('2d');
+    const bW = borderCanvas.width;
+    const bH = borderCanvas.height;
+    const bR = 24;
+
+    bCtx.clearRect(0, 0, bW, bH);
+    bCtx.beginPath();
+    bCtx.roundRect(2, 2, bW - 4, bH - 4, bR);
+    bCtx.strokeStyle = 'rgba(255,255,255,0.18)';
+    bCtx.lineWidth = 3;
+    bCtx.stroke();
+
+    const borderTex = new THREE.CanvasTexture(borderCanvas);
+    const borderMat = new THREE.MeshBasicMaterial({
+        map: borderTex,
+        transparent: true,
+        opacity: 0, // Startet auch unsichtbar
+        depthWrite: false
+    });
+    const border = new THREE.Mesh(borderGeo, borderMat);
+    border.position.z = 0.01;
+    border.userData.isCardBorder = true; // Marker
+    group.add(border);
+
+        // --- TITEL LABEL (oben auf der Card) ---
+    const titleCanvas = document.createElement('canvas');
+    titleCanvas.width = 512;
+    titleCanvas.height = 80;
+    const tCtx = titleCanvas.getContext('2d');
+
+    tCtx.clearRect(0, 0, 512, 80);
+    tCtx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    tCtx.font = '600 36px -apple-system, SF Pro Display, sans-serif';
+    tCtx.textAlign = 'center';
+    tCtx.fillText(productName, 256, 52);
+
+    const titleTex = new THREE.CanvasTexture(titleCanvas);
+    const titleMat = new THREE.MeshBasicMaterial({
+        map: titleTex,
+        transparent: true,
+        opacity: 0,          // Startet unsichtbar
+        depthWrite: false
+    });
+
+    // Breite der Card, etwas schmaler als die Card selbst
+    const titleMesh = new THREE.Mesh(new THREE.PlaneGeometry(cardW - 0.4, 0.6), titleMat);
     
-    const card = new THREE.Mesh(cardGeo, cardMat);
-    card.castShadow = true;
-    card.receiveShadow = true;
-    group.add(card);
+    // Oben auf der Card positionieren
+    titleMesh.position.set(0, cardH / 2 - 0.3, 0.1);
+    titleMesh.userData.isCardTitle = true; // Marker
+    group.add(titleMesh);
 
-    // Text Canvas
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = 1024;
-    canvas.height = 512;
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.font = isNewest ? 'bold 72px -apple-system' : '500 52px -apple-system';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, 512, 256);
-
-    const textTex = new THREE.CanvasTexture(canvas);
-    const textMat = new THREE.MeshBasicMaterial({ 
-        map: textTex, 
+    // --- PRODUKT BILD ---
+    const imgW = isLandscape ? 3.6 : 2.6;
+    const imgH = isLandscape ? 2.6 : 3.6;
+    const imgGeo = new THREE.PlaneGeometry(imgW, imgH);
+    const imgMat = new THREE.MeshStandardMaterial({
         transparent: true,
-        opacity: 1
-    });
-    const textMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(width * 0.9, height * 0.7),
-        textMat
-    );
-    textMesh.position.z = depth / 2 + 0.02;
-    group.add(textMesh);
-
-    // Glow Effect (initially hidden)
-    const glowGeo = createRoundedBox(width * 1.08, height * 1.08, depth * 0.5, 0.25);
-    const glowMat = new THREE.MeshBasicMaterial({
-        color: categoryColor,
-        transparent: true,
-        opacity: 0,
-        side: THREE.BackSide
-    });
-    const glow = new THREE.Mesh(glowGeo, glowMat);
-    glow.position.z = -0.1;
-    group.add(glow);
-
-    group.position.copy(position);
-    group.userData = {
-        type: 'productCard',
-        text: text,
-        isNewest: isNewest,
-        originalPosition: position.clone(),
-        originalScale: new THREE.Vector3(1, 1, 1),
-        glowMesh: glow,
-        textMesh: textMesh,
-        categoryColor: categoryColor
-    };
-
-    return group;
-}*/
-
-function createProductCard(imageUrl, scaleFactor = 1) {
-    const group = new THREE.Group();
-
-    // Die Glas-Karte
-    const geometry = new THREE.PlaneGeometry(3, 4); // Hochformat für Handys
-    const material = new THREE.MeshStandardMaterial({
-        map: new THREE.TextureLoader().load(imageUrl),
-        transparent: true,
-        opacity: 0.9,
         side: THREE.DoubleSide,
-        roughness: 0.1,
-        metalness: 0.5
+        roughness: 0.2,
+        metalness: 0.1,
+        alphaTest: 0.01,
+        depthWrite: false
     });
 
-    const card = new THREE.Mesh(geometry, material);
-    card.scale.set(scaleFactor, scaleFactor, scaleFactor);
-    
-    group.add(card);
+    new THREE.TextureLoader().load(imageUrl, (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        imgMat.map = texture;
+        imgMat.needsUpdate = true;
+    });
+
+    const imgMesh = new THREE.Mesh(imgGeo, imgMat);
+    imgMesh.position.z = 0.06;
+    group.add(imgMesh);
+
+    group.scale.set(scaleFactor, scaleFactor, scaleFactor);
     return group;
 }
 
-function populateBubble(bubbleGroup, categoryName) {
-    const products = categories[categoryName].products; // Angenommen, dein Array ist sortiert (Neu -> Alt)
-    
-    products.forEach((product, index) => {
-        // Hierarchie-Logik:
-        // Index 0 ist das neueste (z.B. iPhone 17 Pro)
-        const isLead = (index === 0);
-        const scale = isLead ? 1.2 : 0.7 - (index * 0.1); 
-        const zPos = isLead ? 1.5 : -1.0 - (index * 1.5); // Lead ist ganz vorne (z > 0)
-        const xPos = isLead ? 0 : (index % 2 === 0 ? 2 : -2);
-        const yPos = isLead ? 0 : (index * -0.5);
 
-        const card = createProductCard(product.image, scale);
-        card.position.set(xPos, yPos, zPos);
-        
-        // Speichere die Startposition für die Animation
-        card.userData.floatOffset = Math.random() * Math.PI * 2;
-        
-        bubbleGroup.add(card);
+// ========================================
+// CARD BACKGROUNDS EIN- UND AUSBLENDEN
+// ========================================
+function showCardBackgrounds(group, visible) {
+    group.children.forEach(card => {
+        if (card.userData.type !== 'productIcon') return;
+
+        card.traverse(child => {
+            if (child.userData.isCardBackground) {
+                child.userData.targetOpacity = visible ? 0.92 : 0;
+            }
+            if (child.userData.isCardBorder) {
+                child.userData.targetOpacity = visible ? 1.0 : 0;
+            }
+            if (child.userData.isCardTitle) {
+                child.userData.targetOpacity = 0;
+            }
+        });
     });
 }
+
 
 // ========================================
 // DYNAMISCHE SOAP BUBBLE (umschließt Inhalte)
@@ -375,7 +464,7 @@ function createCategoryColumn(categoryName, xPosition, categoryColor) {
         // Erstelle die Karte (isLead bekommt größeren Scale-Faktor)
         const scale = isLead ? 1.2 : 0.75;
         // Wir übergeben jetzt productObj.img statt nur dem Namen
-        const miniCard = createProductCard(productObj.img, scale);
+        const miniCard = createProductCard(productObj.img, scale, categoryName, productObj.name);
         
         miniCard.userData.type = 'productIcon';
         miniCard.userData.targetPos = new THREE.Vector3(x, y, z);
@@ -386,6 +475,17 @@ function createCategoryColumn(categoryName, xPosition, categoryColor) {
         miniCard.userData.floatOffset = Math.random() * Math.PI * 2; 
 
         columnGroup.add(miniCard);
+
+        // Direkt nach columnGroup.add(miniCard):
+        miniCard.traverse(child => {
+            if (child.userData.isCardBackground || child.userData.isCardBorder || child.userData.isCardTitle) {
+                if (child.material) {
+                    child.material.opacity = 0;
+                    child.userData.targetOpacity = 0;
+                }
+            }
+        });
+        
         interactableObjects.push(miniCard);
         productCards.push(miniCard);
     });
@@ -408,12 +508,14 @@ function createCategoryColumn(categoryName, xPosition, categoryColor) {
     const ctx = canvas.getContext('2d');
     canvas.width = 1024;
     canvas.height = 256;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.font = '600 80px -apple-system';
+    ctx.font = '600 100px Roboto';
     ctx.textAlign = 'center';
     ctx.fillText(categoryName.toUpperCase(), 512, 140);
 
     const labelTex = new THREE.CanvasTexture(canvas);
+    labelTex.premultiplyAlpha = false;
     const labelMat = new THREE.MeshBasicMaterial({ map: labelTex, transparent: true });
     const labelMesh = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5), labelMat);
     labelMesh.position.set(0, -8.5, 0);
@@ -443,7 +545,7 @@ function buildWorld() {
     });
 
     globalHero = createCurvedHero('./assets/iphone_hero.jpg');
-    globalHero.position.set(0, 11, 5); // Zentriert im Hintergrund
+    globalHero.position.set(0, 15, 5); // Zentriert im Hintergrund
     scene.add(globalHero);
 }
 
@@ -520,7 +622,7 @@ function expandToTidyPile(group) {
         const yOffset = -1.5 + (i * -0.6); // Vertikale Staffelung
         const xOffset = (i % 2 === 0 ? 1 : -1) * spread * (i * 0.12);
 
-        card.userData.targetPos = new THREE.Vector3(xOffset, yOffset, 4 + zOffset);
+        card.userData.targetPos = new THREE.Vector3(xOffset, yOffset - 1, 4 + zOffset);
         card.userData.targetScale = 1.0 - (i * 0.09);
         card.renderOrder = -i; // Verhindert Z-Fighting
         
@@ -530,6 +632,61 @@ function expandToTidyPile(group) {
                 child.material.transparent = true;
                 const opacityTarget = i === 0 ? 1.0 : Math.max(0.5, 1.0 - (i * 0.15));
                 child.userData.targetOpacity = opacityTarget;
+            }
+        });
+    });
+}
+
+function expandToCardGrid(group) {
+    const cards = group.children.filter(child => child.userData.type === 'productIcon');
+    const bubble = group.userData.bubble;
+
+    if (bubble) {
+        bubble.userData.targetOpacity = 0;
+        bubble.userData.targetScale = 0.1;
+    }
+
+    // Card Backgrounds einblenden
+    showCardBackgrounds(group, true);
+
+    cards.forEach((card, i) => {
+        const xOffset = i * 0.30;   // Subtiler horizontaler Versatz
+        const yOffset = -i * 0.3;  // Minimalster vertikaler Versatz
+        const zOffset = -i * 0.08;  // Tiefenstaffelung
+
+        card.userData.targetPos = new THREE.Vector3(xOffset, yOffset - 1, 3 + zOffset);
+        card.userData.targetScale = 1.4;
+        card.userData.targetRotation = 0;
+        card.userData.targetOpacity = 1.0;
+        card.renderOrder = -i;
+    });
+}
+
+function expandToJuxtaposition(group) {
+    const cards = group.children.filter(child => child.userData.type === 'productIcon');
+    const bubble = group.userData.bubble;
+
+    if (bubble) {
+        bubble.userData.targetOpacity = 0;
+        bubble.userData.targetScale = 0.1;
+    }
+
+    showCardBackgrounds(group, true);
+
+    cards.forEach((card, i) => {
+        const xOffset = i * 3;   // Viel mehr horizontaler Versatz → nebeneinander
+        const yOffset = -i * 0.2; // Kaum vertikaler Versatz
+        const zOffset = -i * 0.05; // Minimale Tiefenstaffelung
+
+        card.userData.targetPos = new THREE.Vector3(xOffset, yOffset - 1, 3 + zOffset);
+        card.userData.targetScale = 1.4;
+        card.userData.targetRotation = 0;
+        card.userData.targetOpacity = 1.0;
+        card.renderOrder = -i;
+
+        card.traverse(child => {
+            if (child.userData.isCardTitle) {
+                child.userData.targetOpacity = 1.0;
             }
         });
     });
@@ -633,6 +790,7 @@ function transitionToOverview() {
                 });
             }
         });
+        showCardBackgrounds(group, false);
     });
 }
 
@@ -833,8 +991,8 @@ function resetView() {
 
 function createCurvedHero(imageUrl) {
     const group = new THREE.Group();
-    const radius = 60; 
-    const height = 20;
+    const radius = 55; 
+    const height = 15;
     const arcAngle = Math.PI / 2.2;
     
     const geometry = new THREE.CylinderGeometry(radius, radius, height, 64, 1, true, -arcAngle / 2, arcAngle);
@@ -863,10 +1021,54 @@ function createCurvedHero(imageUrl) {
     group.add(mesh);
     return group;
 }
+
+window.addEventListener('click', (event) => {
+    const mouse = new THREE.Vector2(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
+    );
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(interactableObjects, true);
+
+    if (intersects.length > 0) {
+        let clickedObj = intersects[0].object;
+        while (clickedObj.parent && !clickedObj.userData.category) {
+            clickedObj = clickedObj.parent;
+        }
+
+        if (clickedObj.userData.category) {
+            const clickedCategory = clickedObj.userData.category;
+            const group = scene.getObjectByName(clickedCategory);
+
+            if (clickedCategory !== activeCategory) {
+                // Neue Kategorie angeklickt → Pile
+                selectCategory(clickedCategory);
+                stackState = 'pile';
+            } else {
+                // Gleiche Kategorie nochmal geklickt → State weiterschalten
+                if (stackState === 'pile') {
+                    expandToJuxtaposition(group);
+                    stackState = 'juxtaposition';
+                } else if (stackState === 'juxtaposition') {
+                    // Zurück zur Bubble Übersicht
+                    transitionToOverview();
+                    stackState = 'bubble';
+                }
+            }
+        }
+    }
+});
+
+
 // ========================================
 // INIT
 // ========================================
-function init() {
+async function init() {
+    await new FontFace('Roboto', 'url(https://fonts.gstatic.com/s/roboto/v32/KFOmCnqEu92Fr1Mu4mxK.woff2)').load().then(font => {
+    document.fonts.add(font);
+    });
     const container = document.getElementById('canvas-container');
 
     // Scene
@@ -962,26 +1164,32 @@ function animate() {
     requestAnimationFrame(animate);
 
     if (controls) controls.update();
-    renderer.render(scene, camera);
 
     // Update all category groups
     Object.keys(categories).forEach(key => {
         const group = scene.getObjectByName(key);
         if (!group || !group.userData.targetPos) return;
 
-        // Smooth position transition
-        const posLerpFactor = easeOutCubic(0.09);
+        const posLerpFactor = 0.08; // Etwas weicher für das Haupt-Movement
+
+        // 1. Group Position & Scale
         group.position.lerp(group.userData.targetPos, posLerpFactor);
         
-        // Smooth scale transition
         const targetScale = group.userData.targetScale || 1;
         const s = THREE.MathUtils.lerp(group.scale.x, targetScale, posLerpFactor);
         group.scale.set(s, s, s);
 
-        // Update group opacity
+        // 2. Group Opacity (für das Ausfaden der inaktiven Bubbles)
         if (group.userData.targetOpacity !== undefined) {
             group.traverse(child => {
-                if (child.material && child.material.transparent && child !== group.userData.bubble) {
+                if (child.material && child.material.transparent) {
+                    // Card-Backgrounds, Borders und Titel haben eigene Opacity-Logik
+                    if (
+                        child.userData.isCardBackground ||
+                        child.userData.isCardBorder ||
+                        child.userData.isCardTitle
+                    ) return; // Überspringen!
+
                     child.material.opacity = THREE.MathUtils.lerp(
                         child.material.opacity,
                         group.userData.targetOpacity,
@@ -990,37 +1198,67 @@ function animate() {
                 }
             });
         }
+        const bubble = group.userData.bubble;
+        if (bubble && bubble.userData.targetOpacity !== undefined) {
+            // Sanftes Ausfaden (0 bei Aktivierung, 0.3-0.5 bei Navigation)
+            bubble.material.opacity = THREE.MathUtils.lerp(
+                bubble.material.opacity, 
+                bubble.userData.targetOpacity, 
+                0.1
+            );
+            
+            // Verhindert Rendering, wenn unsichtbar
+            bubble.visible = bubble.material.opacity > 0.01;
 
-        // Animate children (cards)
+            // Optionaler "Platzeffekt" durch Skalierung
+            if (bubble.userData.targetScale !== undefined) {
+                const bs = THREE.MathUtils.lerp(bubble.scale.x, bubble.userData.targetScale, 0.1);
+                bubble.scale.set(bs, bs, bs);
+            }
+        }
+
+        // 3. Children (Product Cards) Animation
         group.children.forEach(child => {
+            // Position lerpen (wichtig für den Stapel-Effekt)
             if (child.userData.targetPos) {
-                child.position.lerp(child.userData.targetPos, 0.12);
+                child.position.lerp(child.userData.targetPos, 0.1);
             }
 
+            // NEU: Rotation lerpen (für den "Tidy Pile" Look)
+            if (child.userData.targetRotation !== undefined) {
+                // Wir nutzen lerp für den Z-Winkel
+                child.rotation.z = THREE.MathUtils.lerp(child.rotation.z, child.userData.targetRotation, 0.1);
+            }
+
+            // Scale & Opacity lerpen
             if (child.userData.targetScale !== undefined) {
-                const cs = THREE.MathUtils.lerp(child.scale.x, child.userData.targetScale, 0.12);
+                const cs = THREE.MathUtils.lerp(child.scale.x, child.userData.targetScale, 0.1);
                 child.scale.set(cs, cs, cs);
             }
-
+            
+            // Falls Karten einzeln ein/ausfaden sollen (z.B. beim Stapeln)
             if (child.userData.targetOpacity !== undefined) {
                 child.traverse(c => {
                     if (c.material && c.material.transparent) {
-                        c.material.opacity = THREE.MathUtils.lerp(
-                            c.material.opacity,
-                            child.userData.targetOpacity,
-                            0.1
-                        );
+                        c.material.opacity = THREE.MathUtils.lerp(c.material.opacity, child.userData.targetOpacity, 0.1);
                     }
                 });
             }
+            child.traverse(subChild => {
+                if (subChild.userData.targetOpacity !== undefined && subChild.material) {
+                    subChild.material.opacity = THREE.MathUtils.lerp(
+                        subChild.material.opacity,
+                        subChild.userData.targetOpacity,
+                        0.02
+                    );
+                }
+            });
         });
     });
 
     checkHover();
     updateHeroParallax();
-    controls.update();
     renderer.render(scene, camera);
-        
 }
 // Start
 init();
